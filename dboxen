@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+if ! test -x "$(command -v gum)"; then
+    echo "Missing dependency: gum"
+    echo "See github.com/charmbracelet/gum"
+    exit 1
+fi
+
+distrobox enter \
+    $(distrobox list | tail -n +2 | gum choose --limit=1 | awk '{ print $3 }')

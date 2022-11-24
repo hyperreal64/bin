@@ -1,0 +1,189 @@
+#!/usr/bin/env python
+#
+# DESCRIPTION
+# Search and open Firefox bookmarks from Rofi
+#
+# USAGE
+# - Ensure the imported packages below are available to your Python interpreter.
+# - Must have rofi installed (obviously)
+# - Run script from command line as ./rofifox.py or set to activate with keyboard shortcut
+#
+# TODO
+# - Optimize
+#
+# CHANGELOG
+# 2022-05-05  Jeffrey Serio <hyperreal@fedoraproject.org>
+#
+#     Add support for tags.
+#
+# 2022-04-17  Jeffrey Serio <hyperreal@fedoraproject.org>
+#
+#     Use parts from https://gist.github.com/iafisher/d624c04940fa46c6d9afb26cb1bf222a
+#     Re-use temporary file.
+#
+# 2022-04-13  Jeffrey Serio <hyperreal@fedoraproject.org>
+#
+#     Refactor code; no need for query_db() function. Use a dict object for
+#     lookups instead of iterating through a list.
+#
+#
+# LICENSE
+#   Copyright 2022 Jeffrey Serio <hyperreal@fedoraproject.org>
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import configparser
+import os
+import shutil
+import sqlite3
+import subprocess
+import tempfile
+import webbrowser as wb
+from collections import namedtuple
+
+
+class Rofifox:
+    Bookmark = namedtuple("Bookmark", ["title", "url", "tags"])
+
+    def __init__(self):
+        self.bookmarks = self.get_bookmarks()
+        self.tags = self.get_tags()
+        self.bm_dict = self.get_bm_dict()
+
+    def get_bookmarks(self) -> list:
+        firefox_path = os.path.join(os.environ["HOME"], ".mozilla/firefox/")
+        conf_path = os.path.join(firefox_path, "profiles.ini")
+        profile = configparser.RawConfigParser()
+        profile.read(conf_path)
+        prof_path = profile.get("Profile0", "Path")
+        sql_path = os.path.join(firefox_path, prof_path, "places.sqlite")
+        tmpdir = tempfile.gettempdir()
+        shutil.copy(sql_path, tmpdir)
+
+        conn = sqlite3.connect(os.path.join(tmpdir, "places.sqlite"))
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+        SELECT
+            moz_places.id,
+            moz_bookmarks.title,
+            moz_places.url
+        FROM
+            moz_bookmarks
+        LEFT JOIN
+            -- The actual URLs are stored in a separate moz_places table, which is pointed
+            -- at by the moz_bookmarks.fk field.
+            moz_places
+        ON
+            moz_bookmarks.fk = moz_places.id
+        WHERE
+            -- Type 1 is for bookmarks; type 2 is for folders and tags.
+            moz_bookmarks.type = 1
+        AND
+            moz_bookmarks.title IS NOT NULL
+        ;
+        """
+        )
+
+        rows = cursor.fetchall()
+
+        bookmark_list = list()
+        for place_id, title, url in rows:
+            # A tag relationship is established by row in the moz_bookmarks table with NULL
+            # title where parent is the tag ID (in moz_bookmarks) and fk is the URL.
+            cursor.execute(
+                """
+                SELECT
+                    A.title
+                FROM
+                    moz_bookmarks A, moz_bookmarks B
+                WHERE
+                    A.id <> B.id
+                AND
+                    B.parent = A.id
+                AND
+                    B.title IS NULL
+                AND
+                    B.fk = ?;
+                """,
+                (place_id,),
+            )
+            tag_names = [r[0] for r in cursor.fetchall()]
+            bookmark_list.append(self.Bookmark(title, url, tag_names))
+
+        conn.close()
+        return bookmark_list
+
+    def get_tags(self) -> set:
+        tags = set()
+        for item in self.bookmarks:
+            if item.tags:
+                for tag in item.tags:
+                    tags.add(tag)
+        return tags
+
+    def get_bm_dict(self) -> dict:
+        bm_dict = dict()
+        for item in self.bookmarks:
+            bm_dict.setdefault(item.title, []).append(item.url)
+        return bm_dict
+
+    def bookmarks_to_str(self) -> str:
+        bookmarks = [item.title for item in self.bookmarks]
+        return "\n".join(bookmarks)
+
+    def tags_to_str(self) -> str:
+        tags = [tag for tag in sorted(self.tags)]
+        return "\n".join(tags)
+
+    def tag_items_to_str(self, tag: str) -> str:
+        tag_items = list()
+        for item in self.bookmarks:
+            if tag in item.tags:
+                tag_items.append(item.title)
+        return "\n".join(tag_items)
+
+    def open_url(self, item: str):
+        url = self.bm_dict.get(item)[0]
+        if url:
+            wb.open(url, new=2)
+
+    def run_cmd(self, input: str, option: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["rofi", "-dmenu", "-i", "-p", "%s" % option],
+            input=input,
+            capture_output=True,
+            text=True,
+        )
+
+
+def run_rofifox():
+    rofifox = Rofifox()
+
+    rofi = rofifox.run_cmd("%s\n%s" % ("Bookmarks", "Tags"), "Rofifox")
+    if rofi.stdout.strip() == "Bookmarks":
+        bookmarks = rofifox.bookmarks_to_str()
+        bm = rofifox.run_cmd(bookmarks, "Bookmarks")
+        if bm.stdout.strip():
+            rofifox.open_url(bm.stdout.strip())
+    elif rofi.stdout.strip() == "Tags":
+        tags = rofifox.tags_to_str()
+        tag = rofifox.run_cmd(tags, "Tags")
+        tag_items = rofifox.tag_items_to_str(tag.stdout.strip())
+        tag_item = rofifox.run_cmd(tag_items, tag.stdout.strip())
+        if tag_item.stdout.strip():
+            rofifox.open_url(tag_item.stdout.strip())
+
+
+run_rofifox()

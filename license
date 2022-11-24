@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Fetch an open source license
+
+base_url="https://api.github.com/licenses"
+headers="Accept: application/vnd.github.drax-preview+json"
+
+if (( $# == 0 )); then
+    res=$(curl --silent --header $headers $base_url)
+    selection=$(echo "$res" | jq ".[].key" | tr -d '"' | gum choose --limit=1)
+else
+    selection="$argv[1]"
+fi
+
+res=$(curl --silent --header $headers $base_url/$selection | jq ."body")
+echo -e $res | tr -d '"'

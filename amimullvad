@@ -1,0 +1,36 @@
+#!/usr/bin/env zsh
+
+# Check for dependencies
+if ! test -x "$(command -v curl)"; then
+    echo "Missing dependency: curl"
+    exit 1
+fi
+
+if ! test -x "$(command -v gum)"; then
+    echo "Missing dependency: gum"
+    echo "See github.com/charmbracelet/gum"
+    exit 1
+fi
+
+if ! test -x "$(command -v jq)"; then
+    echo "Missing dependency: jq"
+    exit 1
+fi
+
+MV_API=$(curl -sSL https://am.i.mullvad.net/json)
+IP=$(echo $MV_API | jq ."ip" | tr -d '"')
+CITY=$(echo $MV_API | jq ."city" | tr -d '"')
+COUNTRY=$(echo $MV_API | jq ."country" | tr -d '"')
+MV_EXIT_IP_HN=$(echo $MV_API | jq ."mullvad_exit_ip_hostname" | tr -d '"')
+MV_SERVER_TYPE=$(echo $MV_API | jq ."mullvad_server_type" | tr -d '"')
+BLACKLISTED=$(echo $MV_API | jq ."blacklisted"."blacklisted")
+
+LEFT_COL=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n" "IP Address" "City" "Country" "Exit IP Hostname" "Server Type" "Blacklisted")
+RIGHT_COL=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n" "$IP" "$CITY" "$COUNTRY" "$MV_EXIT_IP_HN" "$MV_SERVER_TYPE" "$BLACKLISTED")
+GUM_LEFT=$(gum style --foreground "#73F59F" --border-foreground 57 --border none --width 20 --margin "1 2" --padding "0 1" --align right "$LEFT_COL")
+GUM_RIGHT=$(gum style --foreground "#F1F1F1" --border-foreground 57 --border none --width 20 --margin "1 0" --align left "$RIGHT_COL")
+
+GUM_TOP=$(gum style --bold --foreground 212 --border-foreground 57 --border rounded --width 50 --align center --padding "0 1" "Am I Mullvad?")
+GUM_BOTTOM=$(gum join --horizontal --align right "$GUM_LEFT" "$GUM_RIGHT")
+BOTTOM=$(gum style --border-foreground 57 --border rounded --width 50 --align center --padding "0 1" $GUM_BOTTOM)
+gum join --vertical "$GUM_TOP" "$BOTTOM"

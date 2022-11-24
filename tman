@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+CMD=$(gum input --placeholder="command")
+tmux split-window -h man "$CMD"

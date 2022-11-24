@@ -1,0 +1,10 @@
+#!/usr/bin/env zsh
+
+# Snakify - convert file names to_snake_case
+filename=$(basename -- "$1")
+extension="${filename##*.}"
+filename="${filename%.*}"
+new_filename=$(echo ${filename// /_} | tr '-' '_' | tr -cd '[:alnum:]._-')
+new_basename=$(echo "$new_filename.$extension")
+mv -i "$1" "$new_basename"
+mv -i "$new_basename" "${new_basename:l}"

@@ -1,0 +1,138 @@
+# Nerd font installler
+# Usage: python3 nerdfont_installer.py
+
+# LICENSE
+#   Copyright 2022 Jeffrey Serio <hyperreal@fedoraproject.org>
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import os.path
+import sys
+import urllib.error
+import urllib.request
+import zipfile
+
+if sys.platform.startswith("win32") or sys.platform.startswith("cygwin"):
+    print("🔥 Sadly, this script only works on Linux/Unix systems for now. Sorries 🙁.")
+    os.exit(1)
+
+NF_BASE_URL = "https://github.com/ryanoasis/nerd-fonts/releases/download"
+NF_VERSION = "v2.1.0"
+LOCAL_FONT_DIR = os.getenv("HOME") + "/.local/share/fonts"
+
+nf_dict = {
+    1: "3270",
+    2: "Agave",
+    3: "AnonymousPro",
+    4: "Arimo",
+    5: "AurulentSansMono",
+    6: "BigBlueTerminal",
+    7: "BitstreamVeraSansMono",
+    8: "CascadiaCode",
+    9: "CodeNewRoman",
+    10: "Cousine",
+    11: "DaddyTimeMono",
+    12: "DejaVuSansMono",
+    13: "DroidSansMono",
+    14: "FantasqueSansMono",
+    15: "FiraCode",
+    16: "FiraMono",
+    17: "Go-Mono",
+    18: "Gohu",
+    19: "Hack",
+    20: "Hasklig",
+    21: "HeavyData",
+    22: "Hermit",
+    23: "iA-Writer",
+    24: "IBMPlexMono",
+    25: "Inconsolata",
+    26: "InconsolataGo",
+    27: "InconsolataLGC",
+    28: "Iosevka",
+    29: "JetBrainsMono",
+    30: "Lekton",
+    31: "LiberationMono",
+    32: "Meslo",
+    33: "Monofur",
+    34: "Monoid",
+    35: "Mononoki",
+    36: "MPlus",
+    37: "Noto",
+    38: "OpenDyslexic",
+    39: "Overpass",
+    40: "ProFont",
+    41: "ProggyClean",
+    42: "RobotoMono",
+    43: "ShareTechMono",
+    44: "SourceCodePro",
+    45: "SpaceMono",
+    46: "Terminus",
+    47: "Tinos",
+    48: "Ubuntu",
+    49: "UbuntuMono",
+    50: "VictorMono",
+}
+
+try:
+    for key, value in nf_dict.items():
+        print("%d) %s" % (key, value))
+
+    selection = int(input("\nSelection: "))
+
+    if not os.path.exists(LOCAL_FONT_DIR):
+        os.mkdir(LOCAL_FONT_DIR)
+
+    if selection >= 1 and selection <= 50:
+        print("⚡️  Downloading %s..." % nf_dict[selection])
+
+        url = "%s/%s/%s.zip" % (NF_BASE_URL, NF_VERSION, nf_dict[selection])
+        save_path = "%s/%s.zip" % (LOCAL_FONT_DIR, nf_dict[selection])
+
+        with urllib.request.urlopen(url) as in_file:
+            with open(save_path, "wb") as out_file:
+                out_file.write(in_file.read())
+
+        print("🗃️  Extracting the archive...")
+        with zipfile.ZipFile(save_path, "r") as z:
+            z.extractall(LOCAL_FONT_DIR)
+
+        print("🗑️  Cleaning up...")
+        for item in os.listdir(LOCAL_FONT_DIR):
+            if ".zip" in item:
+                os.remove(LOCAL_FONT_DIR + "/%s" % item)
+
+            if ".otf" in item:
+                os.remove(LOCAL_FONT_DIR + "/%s" % item)
+
+            if "Windows Compatible.ttf" in item:
+                os.remove(LOCAL_FONT_DIR + "/%s" % item)
+
+            if "Complete.ttf" in item:
+                os.remove(LOCAL_FONT_DIR + "/%s" % item)
+    else:
+        print(
+            "💥  Your selection must be between and including 1 to 50. Like, obviously."
+        )
+        os.exit(1)
+except ValueError:
+    print("💥  Whatever input you entered was not an integer.")
+except urllib.error.URLError as url_err:
+    print("💥  Something weird happened while trying to download the archive.")
+    print(url_err.strerror)
+except zipfile.BadZipFile as badzip_err:
+    print("💥  Something weird happened while trying to unzip the archive.")
+    print(badzip_err.with_traceback)
+except OSError as os_err:
+    print("💥  Something weird happened while running this program.")
+    print("%s: %s" % (os_err.filename, os_err.strerror))
