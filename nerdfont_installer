@@ -1,5 +1,4 @@
-# Nerd font installler
-# Usage: python3 nerdfont_installer.py
+#!/usr/bin/env bash
 
 # LICENSE
 #   Copyright 2022 Jeffrey Serio <hyperreal@fedoraproject.org>
@@ -17,122 +16,158 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os.path
-import sys
-import urllib.error
-import urllib.request
-import zipfile
+set -eu
+set -o pipefail
+set -o posix
 
-if sys.platform.startswith("win32") or sys.platform.startswith("cygwin"):
-    print("🔥 Sadly, this script only works on Linux/Unix systems for now. Sorries 🙁.")
-    os.exit(1)
+# Check for dependencies: curl and gum.
+if ! test -x "$(command -v curl)"; then
+    echo "Missing dependencies: please install curl."
+    exit 1
+fi
 
-NF_BASE_URL = "https://github.com/ryanoasis/nerd-fonts/releases/download"
-NF_VERSION = "v2.1.0"
-LOCAL_FONT_DIR = os.getenv("HOME") + "/.local/share/fonts"
+if ! test -x "$(command -v gum)"; then
+    echo "Missing dependencies: please install the gum command."
+    echo "See https://github.com/charmbracelet/gum"
+    exit 1
+fi
 
-nf_dict = {
-    1: "3270",
-    2: "Agave",
-    3: "AnonymousPro",
-    4: "Arimo",
-    5: "AurulentSansMono",
-    6: "BigBlueTerminal",
-    7: "BitstreamVeraSansMono",
-    8: "CascadiaCode",
-    9: "CodeNewRoman",
-    10: "Cousine",
-    11: "DaddyTimeMono",
-    12: "DejaVuSansMono",
-    13: "DroidSansMono",
-    14: "FantasqueSansMono",
-    15: "FiraCode",
-    16: "FiraMono",
-    17: "Go-Mono",
-    18: "Gohu",
-    19: "Hack",
-    20: "Hasklig",
-    21: "HeavyData",
-    22: "Hermit",
-    23: "iA-Writer",
-    24: "IBMPlexMono",
-    25: "Inconsolata",
-    26: "InconsolataGo",
-    27: "InconsolataLGC",
-    28: "Iosevka",
-    29: "JetBrainsMono",
-    30: "Lekton",
-    31: "LiberationMono",
-    32: "Meslo",
-    33: "Monofur",
-    34: "Monoid",
-    35: "Mononoki",
-    36: "MPlus",
-    37: "Noto",
-    38: "OpenDyslexic",
-    39: "Overpass",
-    40: "ProFont",
-    41: "ProggyClean",
-    42: "RobotoMono",
-    43: "ShareTechMono",
-    44: "SourceCodePro",
-    45: "SpaceMono",
-    46: "Terminus",
-    47: "Tinos",
-    48: "Ubuntu",
-    49: "UbuntuMono",
-    50: "VictorMono",
+# Define variables
+NF_BASE_URL="https://github.com/ryanoasis/nerd-fonts/releases/download"
+NF_VERSION=$(curl -sL https://github.com/ryanoasis/nerd-fonts/releases/latest | grep "<title>Release" | awk '{ print $2 }')
+NF_URL="${NF_BASE_URL}/${NF_VERSION}"
+LOCAL_FONT_DIR="${HOME}/.local/share/fonts"
+
+# Fancy error output message.
+gum_error() {
+    gum style \
+        --foreground 3 \
+        --border-foreground 203 \
+        --border rounded \
+        --align center \
+        --width 50 \
+        --margin "1 2" \
+        "ERROR" \
+        "" \
+        "$1"
+    exit 1
 }
 
-try:
-    for key, value in nf_dict.items():
-        print("%d) %s" % (key, value))
+# Array of nerd font names.
+nf_array=(
+    3270
+    Agave
+    AnonymousPro
+    Arimo
+    AurulentSansMono
+    BigBlueTerminal
+    BitstreamVeraSansMono
+    CascadiaCode
+    CodeNewRoman
+    Cousine
+    DaddyTimeMono
+    DejaVuSansMono
+    DroidSansMono
+    FantasqueSansMono
+    FiraCode
+    FiraMono
+    Go-Mono
+    Gohu
+    Hack
+    Hasklig
+    HeavyData
+    Hermit
+    iA-Writer
+    IBMPlexMono
+    Inconsolata
+    InconsolataGo
+    InconsolataLGC
+    Iosevka
+    JetBrainsMono
+    Lekton
+    LiberationMono
+    Meslo
+    Monofur
+    Monoid
+    Mononoki
+    MPlus
+    Noto
+    OpenDyslexic
+    Overpass
+    ProFont
+    ProggyClean
+    RobotoMono
+    ShareTechMono
+    SourceCodePro
+    SpaceMono
+    Terminus
+    Tinos
+    Ubuntu
+    UbuntuMono
+    VictorMono
+)
 
-    selection = int(input("\nSelection: "))
+# Print the startup message.
+message=$(echo "Nerd font installer :nerd_face:" | gum format -t emoji)
+gum style \
+    --foreground 212 \
+    --border-foreground 57 \
+    --border rounded \
+    --align center \
+    --width 50 \
+    --margin "1 2" \
+    "$message"
 
-    if not os.path.exists(LOCAL_FONT_DIR):
-        os.mkdir(LOCAL_FONT_DIR)
+# Print the `nf_array` line by line and pipe to `gum choose --no-limit`.
+# Create `selection` array from the output of `gum choose --no-limit`.
+# It will contain only the items that were selected by the user.
+selection=($(printf "%s\n" "${nf_array[@]}" | gum choose --no-limit))
 
-    if selection >= 1 and selection <= 50:
-        print("⚡️  Downloading %s..." % nf_dict[selection])
+# Prompt for user confirmation and proceed with installation of nerd fonts.
+#
+# For each nerd font selected, print a status message while downloading and
+# installing the nerd font. Else print an error message if any of it fails.
+#
+# If user declines to proceed with installation, print a cancel message.
+if gum confirm "Proceed with installation?"; then
+    for item in "${selection[@]}"; do
+        if ! gum spin --spinner dot --title "Downloading $item..." \
+            -- curl --create-dirs -f -sL -o "${LOCAL_FONT_DIR}/$item.zip" "${NF_URL}/$item.zip"; then
+            gum_error "Failed to download nerd font archive $item"
+        fi
+        if ! gum spin --spinner dot --title "Installing $item..." \
+            -- unzip -uo "${LOCAL_FONT_DIR}/$item.zip" -d "${LOCAL_FONT_DIR}"; then
+            gum_error "Failed to install nerd font archive $item"
+        fi
+    done
+else
+    gum style \
+        --foreground 212 \
+        --border-foreground 57 \
+        --border rounded \
+        --align center \
+        --width 50 \
+        --margin "1 2" \
+        "Nerd font installation cancelled"
+fi
 
-        url = "%s/%s/%s.zip" % (NF_BASE_URL, NF_VERSION, nf_dict[selection])
-        save_path = "%s/%s.zip" % (LOCAL_FONT_DIR, nf_dict[selection])
+# Clean up local font directory. Removes everything besides fonts.
+if ! gum spin --spinner dot --title "Cleaning up local font directory..." \
+    -- find "${LOCAL_FONT_DIR}" -mindepth 1 \
+        -not -name "*.otf" \
+        -not -name "*.ttf" \
+        -not -name "static" \
+        -exec rm -rf {} \; ; then
+    gum_error "Failed to clean up local font directory. Try doing it manually."
+fi
 
-        with urllib.request.urlopen(url) as in_file:
-            with open(save_path, "wb") as out_file:
-                out_file.write(in_file.read())
+# Update font cache
+if ! gum spin --spinner dot --title "Updating font cache..." \
+    -- fc-cache -f; then
+    gum_error "Failed to update font cache."
+fi
 
-        print("🗃️  Extracting the archive...")
-        with zipfile.ZipFile(save_path, "r") as z:
-            z.extractall(LOCAL_FONT_DIR)
-
-        print("🗑️  Cleaning up...")
-        for item in os.listdir(LOCAL_FONT_DIR):
-            if ".zip" in item:
-                os.remove(LOCAL_FONT_DIR + "/%s" % item)
-
-            if ".otf" in item:
-                os.remove(LOCAL_FONT_DIR + "/%s" % item)
-
-            if "Windows Compatible.ttf" in item:
-                os.remove(LOCAL_FONT_DIR + "/%s" % item)
-
-            if "Complete.ttf" in item:
-                os.remove(LOCAL_FONT_DIR + "/%s" % item)
-    else:
-        print(
-            "💥  Your selection must be between and including 1 to 50. Like, obviously."
-        )
-        os.exit(1)
-except ValueError:
-    print("💥  Whatever input you entered was not an integer.")
-except urllib.error.URLError as url_err:
-    print("💥  Something weird happened while trying to download the archive.")
-    print(url_err.strerror)
-except zipfile.BadZipFile as badzip_err:
-    print("💥  Something weird happened while trying to unzip the archive.")
-    print(badzip_err.with_traceback)
-except OSError as os_err:
-    print("💥  Something weird happened while running this program.")
-    print("%s: %s" % (os_err.filename, os_err.strerror))
+# Print a message stating which nerd fonts were installed.
+gum format -t markdown -- \
+    "# Successfully installed" \
+    "$(printf "* %s\n" "${selection[@]}")"
