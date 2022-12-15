@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+# Check for gum
+if ! test -x "$(command -v gum)"; then
+    echo "Missing dependency: gum"
+    echo "See github.com/charmbracelet/gum"
+    exit 1
+fi
+
+SSH_CONFIG="${HOME}/.ssh/config"
+usern_array=()
+hostn_array=()
+logins=()
+
+while IFS= read -r line; do
+    if [[ "$line" == *"User"* ]]; then
+        usern=$(echo $line | awk '{ print $2 }')
+        usern_array+=($usern)
+    fi
+done < "${SSH_CONFIG}"
+
+while IFS= read -r line; do
+    if [[ "$line" == *"HostName"* ]]; then
+        hostn=$(echo $line | awk '{ print $2 }')
+        hostn_array+=($hostn)
+    fi
+done < "${SSH_CONFIG}"
+
+let "array_len = ${#usern_array[@]} - 1"
+
+for i in $(seq 0 $array_len); do
+    userhost=$(printf "%s@%s" "${usern_array[i]}" "${hostn_array[i]}")
+    logins+=($userhost)
+done
+
+selection=$(printf "%s\n" "${logins[@]}" | gum choose --limit=1)
+if test -n "${selection}"; then
+    ssh -X "${selection}"
+fi
