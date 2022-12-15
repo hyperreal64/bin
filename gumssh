@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
-# Check for gum
+# This script parses the ssh config at ~/.ssh/config to find user@host
+# entries, then uses gum choose to select one user@host to ssh into.
+
+# Check for gum.
 if ! test -x "$(command -v gum)"; then
     echo "Missing dependency: gum"
     echo "See github.com/charmbracelet/gum"
@@ -12,6 +15,7 @@ usern_array=()
 hostn_array=()
 logins=()
 
+# Read Users from ssh config and store them in usern_array.
 while IFS= read -r line; do
     if [[ "$line" == *"User"* ]]; then
         usern=$(echo $line | awk '{ print $2 }')
@@ -19,6 +23,7 @@ while IFS= read -r line; do
     fi
 done < "${SSH_CONFIG}"
 
+# Read HostNames from ssh config and store them in hostn_array.
 while IFS= read -r line; do
     if [[ "$line" == *"HostName"* ]]; then
         hostn=$(echo $line | awk '{ print $2 }')
@@ -26,14 +31,21 @@ while IFS= read -r line; do
     fi
 done < "${SSH_CONFIG}"
 
+# Set the array_len to the size of usern_array - 1.
 let "array_len = ${#usern_array[@]} - 1"
 
+# Iterate through usern_array and hostn_array and match user and host
+# pairs, then store them in the logins array in "user@host" format.
 for i in $(seq 0 $array_len); do
     userhost=$(printf "%s@%s" "${usern_array[i]}" "${hostn_array[i]}")
     logins+=($userhost)
 done
 
+# Print each member of logins array on a new line and pipe to gum choose.
+# Store selection.
 selection=$(printf "%s\n" "${logins[@]}" | gum choose --limit=1)
+
+# If $selection is non-empty, pass it to the ssh -X command.
 if test -n "${selection}"; then
     ssh -X "${selection}"
 fi
